@@ -1,0 +1,26 @@
+HIVE_DB="$1"
+echo Hive DB: $HIVE_DB
+
+HIVE_TABLE_INPUT="$2"
+echo Hive Input Table: $HIVE_TABLE_INPUT
+
+HIVE_TABLE_OUTPUT="$2"
+echo Hive Output Table: $HIVE_TABLE_OUTPUT
+
+export HCAT_HOME=/usr/lib/hive-hcatalog
+export HIVE_HOME=/usr/lib/hive
+export HADOOP_HOME=/usr/lib/hadoop
+export DEJAVU_LIB=$ROOT_FOLDER/dejavu/data_processing/lib
+HCATJAR=$HCAT_HOME/share/hcatalog/hive-hcatalog-core.jar
+HCATPIGJAR=$HCAT_HOME/share/hcatalog/hive-hcatalog-pig-adapter.jar
+HIVE_VERSION=0.13.1-cdh5.3.0
+LIBJARS=`echo $HADOOP_CLASSPATH | sed -e 's/:/,/g'`
+
+export HADOOP_CLASSPATH=$HCATJAR:$HCATPIGJAR:$HIVE_HOME/lib/hive-exec-$HIVE_VERSION.jar\
+:$HIVE_HOME/lib/hive-metastore-$HIVE_VERSION.jar:$HIVE_HOME/lib/jdo-api-3.0.1.jar:$HIVE_HOME/lib/libfb303-0.9.0.jar\
+:$HIVE_HOME/lib/libthrift-0.9.0-cdh5-2.jar:$HADOOP_HOME/client/slf4j-api-1.7.5.jar:/etc/hive/conf:/etc/hadoop/conf:$HIVE_HOME/lib/antlr-runtime-3.4.jar:$DEJAVU_LIB/datanucleus-api-jdo-3.2.1.jar:$DEJAVU_LIB/datanucleus-core-3.2.2.jar:$DEJAVU_LIB/datanucleus-rdbms-3.2.1.jar:$DEJAVU_LIB/mysql-connector-java.jar
+LIBJARS=`echo $HADOOP_CLASSPATH | sed -e 's/:/,/g'`
+export LIBJARS=$HIVE_HOME/lib/antlr-runtime-3.4.jar,$LIBJARS
+
+
+hadoop jar cassandra-to-hive-0.1.0.jar com.kenshoo.bigdata.cassandra_to_hive.Main -files $HCATJAR -libjars $LIBJARS $HIVE_DB $HIVE_TABLE_INPUT $HIVE_TABLE_OUTPUT

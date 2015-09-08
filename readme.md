@@ -1,0 +1,1 @@
+For version maven reference please use this doc: http://www.cloudera.com/content/cloudera/en/documentation/core/latest/topics/cdh_vd_cdh5_maven_repo.html

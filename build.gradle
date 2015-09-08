@@ -1,0 +1,150 @@
+def BUILD_NUMBER = project.hasProperty('BUILD_NUMBER')? "$BUILD_NUMBER":0
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'eu.appsatori:gradle-fatjar-plugin:0.2'
+    }
+}
+
+SLF_API = 'org.slf4j:slf4j-api:1.7.5'
+SLF_LOG4J = 'org.slf4j:slf4j-log4j12:1.7.5'
+JACKSON_MAPPER = 'org.codehaus.jackson:jackson-mapper-asl:1.8.8'
+JACKSON_CORE = 'org.codehaus.jackson:jackson-core-asl:1.8.8'
+COMMOMS_CODE = 'commons-codec:commons-codec:1.4'
+COMMONS_LOGGIMS = 'commons-logging:commons-logging:1.1.1'
+COMMONS_HTTPCLIENT = 'commons-httpclient:commons-httpclient:3.1'
+COMMONS_LANG = 'commons-lang:commons-lang:2.5'
+COMMON_CLI = 'commons-cli:commons-cli:1.2'
+LOGS = 'log4j:log4j:1.2.16'
+LIB_THRIFT = 'org.apache.thrift:libthrift:0.9.0'
+JETTISON = 'org.codehaus.jettison:jettison:1.2'
+JETTY = 'org.mortbay.jetty:jetty:6.1.26'
+SNAPPY = 'org.xerial.snappy:snappy-java:1.0.5'
+GUAVA = 'com.google.guava:guava:14.0.1'
+AVRO = 'org.apache.avro:avro:1.7.5'
+ZOOKEEPER = 'org.apache.zookeeper:zookeeper:3.4.6'
+JAVAX = 'javax.servlet:servlet-api:2.5'
+NETTY_IO = 'io.netty:netty:3.7.0.Final'
+HTTP_COMPONENT_CLIENT = 'org.apache.httpcomponents:httpclient:4.2.5'
+HTTP_COMPONENT_CORE = 'org.apache.httpcomponents:httpcore:4.2.4'
+ANTLR = 'org.antlr:antlr-runtime:3.4'
+JACKSON_JAXRS = 'org.codehaus.jackson:jackson-jaxrs:1.9.13'
+JACKSON_XC = 'org.codehaus.jackson:jackson-xc:1.9.13'
+COMMONS_COLLECTIONS = 'commons-collections:commons-collections:3.2.1'
+JLINE = 'jline:jline:1.0'
+
+allprojects {
+    apply plugin: 'maven'
+    apply plugin: 'java'
+    apply plugin: "jacoco"
+    apply plugin: 'idea'
+    apply plugin: 'project-report'
+    apply plugin: 'fatjar'
+
+    group = 'com.kenshoo.bigdata'
+    version = "0.1.0"
+
+    apply from:"${rootProject.projectDir}/uploadArchives.gradle"
+
+    sourceCompatibility = 1.7
+    targetCompatibility = 1.7
+
+
+    dependencies {
+        compile 'org.apache.hive.hcatalog:hive-hcatalog-core:0.13.1', {
+            ext {
+                fatJarExclude = true
+            }
+            transitive = true
+        }
+
+        compile 'org.apache.hadoop:hadoop-client:2.5.0', {
+            ext {
+                fatJarExclude = true
+            }
+            transitive = true
+        }
+
+        compile 'org.apache.hadoop:hadoop-hdfs:2.5.0', {
+            ext {
+                fatJarExclude = true
+            }
+            transitive = true
+        }
+
+        compile 'org.apache.hadoop:hadoop-common:2.5.0', {
+            ext {
+                fatJarExclude = true
+            }
+            transitive = true
+        }
+        compile 'org.apache.hadoop:hadoop-mapreduce-client-core:2.5.0', {
+            ext {
+                fatJarExclude = true
+            }
+            transitive = true
+        }
+
+        compile 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.5.0', {
+            ext {
+                fatJarExclude = true
+            }
+            transitive = true
+        }
+        compile 'com.netflix.astyanax:astyanax-thrift:2.0.1'
+        compile 'org.apache.cassandra:cassandra-all:1.2.11'
+
+        compile 'commons-cli:commons-cli:1.2'
+        compile 'log4j:log4j:1.2.16'
+        compile SLF_API
+        compile 'org.json:json:20131018'
+        compile 'com.fasterxml.jackson.core:jackson-core:2.5.2'
+
+
+        testCompile 'junit:junit-dep:4.8.2'
+        testCompile 'org.hamcrest:hamcrest-all:1.3'
+        testCompile 'org.mockito:mockito-all:1.9.0'
+    }
+}
+
+
+configurations.all {
+    resolutionStrategy {
+        failOnVersionConflict()
+        force  SLF_API,SLF_LOG4J, JACKSON_CORE, COMMOMS_CODE, COMMONS_LOGGIMS, COMMONS_HTTPCLIENT, JACKSON_MAPPER, COMMONS_LANG, LOGS, JETTISON, JETTY, SNAPPY,
+                GUAVA, COMMON_CLI, AVRO, ZOOKEEPER, JAVAX, HTTP_COMPONENT_CLIENT, NETTY_IO, JACKSON_JAXRS, JACKSON_XC, LIB_THRIFT, HTTP_COMPONENT_CORE, ANTLR,
+                COMMONS_COLLECTIONS, JLINE
+    }
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.12'
+}
+
+idea {
+    project {
+        jdkName = '1.7'
+    }
+}
+
+idea.project.ipr {
+    withXml { provider ->
+        provider.node.component.find { it.@name == 'VcsDirectoryMappings' }.mapping.@vcs = 'Git'
+    }
+}
+
+fatJar {
+    exclude "META-INF/*.SF"
+    exclude "META-INF/*.DSA"
+    exclude "META-INF/*.RSA"
+
+    manifest {
+        attributes 'Implementation-Version': "${project.version}"
+    }
+}
+
+fatJar.dependsOn jar
