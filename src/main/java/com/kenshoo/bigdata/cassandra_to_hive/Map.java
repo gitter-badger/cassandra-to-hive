@@ -39,7 +39,8 @@ import org.json.JSONObject;
 public class Map extends Mapper<WritableComparable, HCatRecord, Text, DefaultHCatRecord>{
 
 
-    private HCatSchema inputSchema = null,outputSchema = null;
+    //private HCatSchema inputSchema = null,outputSchema = null;
+    private HCatSchema inputSchema = null;
     private DefaultHCatRecord outputRecord;
 
     private String cassandraAddress,cassandraUsername,cassandraPassword;
@@ -95,7 +96,7 @@ public class Map extends Mapper<WritableComparable, HCatRecord, Text, DefaultHCa
         //Schema Init
         {
             inputSchema = HCatBaseInputFormat.getTableSchema(context.getConfiguration());
-            outputSchema = HCatBaseOutputFormat.getTableSchema(context.getConfiguration());
+            //outputSchema = HCatBaseOutputFormat.getTableSchema(context.getConfiguration());
         }
 
         //Astyanax Init

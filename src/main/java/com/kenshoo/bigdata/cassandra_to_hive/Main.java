@@ -20,10 +20,10 @@ import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.hive.hcatalog.data.DefaultHCatRecord;
 import org.apache.hive.hcatalog.data.HCatRecord;
-import org.apache.hive.hcatalog.data.schema.HCatSchema;
 import org.apache.hive.hcatalog.mapreduce.HCatInputFormat;
-import org.apache.hive.hcatalog.mapreduce.HCatOutputFormat;
-import org.apache.hive.hcatalog.mapreduce.OutputJobInfo;
+
+
+import java.util.Date;
 
 /**
  * Created by noamh on 26/07/15.
@@ -41,7 +41,7 @@ public class Main extends Configured implements Tool {
     public static final String CONF_TIMESTAMP_FIELD_NAME = "timestampFieldName";
     public static final String CONF_TTL_FIELD_NAME = "ttlFieldName";
     public static final String CONF_RECORD_PER_BULK = "recordsPerBulk";
-    public static final String CONF_HIVE_DATABASE = "hiveDatabasde";
+    public static final String CONF_HIVE_DATABASE = "hiveDatabase";
     public static final String CONF_HIVE_TABLE = "hiveTable";
 
     private Configuration conf = null;
@@ -56,11 +56,11 @@ public class Main extends Configured implements Tool {
     }
 
     public int run(String[] args) throws Exception {
-        System.out.println("Version: 0.1");
-        //String dbName = "", inputTableName = "",outputTableName = "";
+        System.out.println("Version: 0.2");
         String dbName = "", inputTableName = "";
         FileSystem fs;
         Job job = null;
+        boolean configValid = false;
 
         //Init Job
         {
@@ -112,76 +112,75 @@ public class Main extends Configured implements Tool {
                     argGetAndSetConf(CONF_TTL_FIELD_NAME,false) &&
                     argGetAndSetConf(CONF_RECORD_PER_BULK,true)) {
 
+                dbName = argGet(CONF_HIVE_DATABASE,true);
+                inputTableName = argGet(CONF_HIVE_TABLE,true);
+
+                if(dbName != null && dbName.isEmpty() == false && inputTableName != null && inputTableName.isEmpty() == false) {
+                    configValid = true;
+                } else {
+
+                }
             }
             else {
                 System.out.println("Can't continue without missing args.");
             }
-
-
-
-
-            //String cassandraAddress = "10.73.210.11",cassandraUsername = "cassandra",cassandraPassword = "cassandra";
-            String keyFieldName = "cass_key_binary",columnNameFieldName = "cass_column_name_binary", valueFieldName = "cass_value_binary";
-            String timestampFieldName = "cass_timestamp",ttlFieldName = "cass_ttl";
-            String keyspaceName = "dejavu_test";
-
-            String columnFamilyName = "events";
-            dbName = "p_noamh";
-            inputTableName = "tracking_events_ks1532_binary";
-            //outputTableName = "tracking_events_ks1532_insert";
-            //String columnFamilyName = "index_lookup";
-
-            int recordsPerBulk = 100;
-
-            conf.set("keyspaceName",keyspaceName);
-            conf.set("columnFamilyName",columnFamilyName);
-            conf.set("keyFieldName",keyFieldName);
-            conf.set("columnNameFieldName",columnNameFieldName);
-            conf.set("valueFieldName",valueFieldName);
-            conf.set("timestampFieldName",timestampFieldName);
-            conf.set("ttlFieldName",ttlFieldName);
-            conf.setInt("recordsPerBulk",recordsPerBulk);
         }
 
-        //Input
-        {
-            HCatInputFormat.setInput(job, dbName, inputTableName);
-            job.setInputFormatClass(HCatInputFormat.class);
+        if(configValid) {
+            //Input
+            {
+                HCatInputFormat.setInput(job, dbName, inputTableName);
+                job.setInputFormatClass(HCatInputFormat.class);
+            }
+
+            //Output
+            {
+                //Generate some temp directory
+                Path outputPath = new Path("/tmp/dejavu/" + dbName + "/" + inputTableName + "/" + (new Date()).getTime());
+                FileOutputFormat.setOutputPath(job, outputPath);
+                FileOutputFormat.setCompressOutput(job,true);
+                FileOutputFormat.setOutputCompressorClass(job,GzipCodec.class);
+                SequenceFileOutputFormat.setOutputCompressionType(job, SequenceFile.CompressionType.BLOCK);
+                job.setOutputFormatClass(org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat.class);
+            }
+            /*
+            {
+                job.setOutputFormatClass(HCatOutputFormat.class);
+                HCatOutputFormat.setOutput(job, OutputJobInfo.create(dbName, outputTableName,null));
+                HCatSchema s = HCatOutputFormat.getTableSchema(job.getConfiguration());
+                HCatOutputFormat.setSchema(job, s);
+            }
+            */
+
+            //Map
+            {
+                job.setMapOutputKeyClass(Text.class);
+                job.setMapOutputValueClass(DefaultHCatRecord.class);
+                job.setMapperClass(Map.class);
+            }
+
+            //Reduce
+            {
+                job.setOutputKeyClass(Text.class);
+                job.setOutputValueClass(HCatRecord.class);
+                job.setNumReduceTasks(15);
+            }
+
+
+
+
+            return (job.waitForCompletion(true) ? 0 : 1);
+        } else {
+
+            return 0;
         }
 
-        //Output
-        /*
-        {
-            job.setOutputFormatClass(HCatOutputFormat.class);
-            HCatOutputFormat.setOutput(job, OutputJobInfo.create(dbName, outputTableName,null));
-            HCatSchema s = HCatOutputFormat.getTableSchema(job.getConfiguration());
-            HCatOutputFormat.setSchema(job, s);
-        }
-        */
-
-        //Map
-        {
-            job.setMapOutputKeyClass(Text.class);
-            job.setMapOutputValueClass(DefaultHCatRecord.class);
-            job.setMapperClass(Map.class);
-        }
-
-        //Reduce
-        {
-            job.setOutputKeyClass(Text.class);
-            job.setOutputValueClass(HCatRecord.class);
-            job.setNumReduceTasks(15);
-        }
-
-
-
-
-        return (job.waitForCompletion(true) ? 0 : 1);
-        //return 0;
     }
 
     private String argGet(String keyName, boolean mustSupply) {
         if(cmd.hasOption(keyName)) {
+            System.out.println(keyName  + "=" + cmd.getOptionValue(keyName));
+
             return cmd.getOptionValue(keyName);
         } else if (mustSupply) {
             System.out.println("Must supply " + keyName + " param");
@@ -196,11 +195,12 @@ public class Main extends Configured implements Tool {
     }
     private boolean argGetAndSetConf(String keyName, boolean mustSupply,String defaultValue) {
         if(cmd.hasOption(keyName)) {
-            conf.set(keyName,cmd.getOptionValue(keyName));
+            System.out.println(keyName  + "=" + cmd.getOptionValue(keyName));
+            conf.set(keyName, cmd.getOptionValue(keyName));
 
             return true;
         } else if (mustSupply) {
-            System.out.println("Must supply " + keyName + " param");
+            System.out.println("Must supply '" + keyName + "' param");
 
             return false;
         }   else {
