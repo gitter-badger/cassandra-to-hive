@@ -1,8 +1,20 @@
 package com.kenshoo.bigdata.cassandra_to_hive;
 
+import com.netflix.astyanax.AstyanaxContext;
+import com.netflix.astyanax.Keyspace;
+import com.netflix.astyanax.MutationBatch;
+import com.netflix.astyanax.connectionpool.NodeDiscoveryType;
+import com.netflix.astyanax.connectionpool.OperationResult;
+import com.netflix.astyanax.connectionpool.impl.ConnectionPoolConfigurationImpl;
+import com.netflix.astyanax.connectionpool.impl.CountingConnectionPoolMonitor;
+import com.netflix.astyanax.connectionpool.impl.SimpleAuthenticationCredentials;
+import com.netflix.astyanax.impl.AstyanaxConfigurationImpl;
+import com.netflix.astyanax.model.ColumnFamily;
+import com.netflix.astyanax.thrift.ThriftFamilyFactory;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.mapred.AvroValue;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.MapWritable;
@@ -23,44 +35,141 @@ import java.util.UUID;
 //AVRO
 //public class Reduce extends Reducer<Text,AvroValue<GenericRecord>,Text,Text> {
 public class Reduce extends Reducer<BytesWritable,BytesWritable,Text,Text> {
-    //AVRO
-    private Schema avroSchema = new Schema.Parser().parse(Sandbox.cassandraSchema);
+
+    private String keyspaceName,columnFamilyName;
+    private String cassandraAddress,cassandraUsername,cassandraPassword;
+    private Schema avroSchema = new Schema.Parser().parse(Main.CASSANDRA_RECORD_AVRO_SCHEMA);
+    private int recordsPerBulk, recordsInBulk = 0;
+    private Keyspace keyspace;
+    private ColumnFamily<byte[], byte[]> columnFamily;
+    MutationBatch mutatorBatch = null;
 
     public void setup(Context context)
             throws java.io.IOException, InterruptedException {
+        //Init from configuration
+        {
+            Configuration conf = context.getConfiguration();
+
+            cassandraAddress = conf.get("cassandraAddress");
+            System.out.println("cassandraAddress: " + cassandraAddress);
+
+            cassandraUsername = conf.get("cassandraUsername");
+            System.out.println("cassandraUsername: " + cassandraUsername);
+
+            cassandraPassword = conf.get("cassandraPassword");
+            System.out.println("cassandraPassword Length: " + Integer.toString(cassandraPassword.length()));
+
+            keyspaceName = conf.get("keyspaceName");
+            System.out.println("keyspaceName: " + keyspaceName);
+
+            columnFamilyName = conf.get("columnFamilyName");
+            System.out.println("columnFamilyName: " + columnFamilyName);
+
+            recordsPerBulk = conf.getInt("recordsPerBulk",100);
+            System.out.println("recordsPerBulk: " + Integer.toString(recordsPerBulk));
+        }
+
+        //Astyanax Init
+        {
+            AstyanaxContext<Keyspace> astyanaxContext = new AstyanaxContext.Builder()
+                    .forCluster(keyspaceName)
+                    .forKeyspace(keyspaceName)
+                    .withAstyanaxConfiguration(new AstyanaxConfigurationImpl()
+                                    .setDiscoveryType(NodeDiscoveryType.RING_DESCRIBE)
+                    )
+                    .withConnectionPoolConfiguration(new ConnectionPoolConfigurationImpl("MyConnectionPool")
+                                    .setPort(9160)
+                                    .setMaxConnsPerHost(1)
+                                    .setSeeds(cassandraAddress)
+                                    .setAuthenticationCredentials(new SimpleAuthenticationCredentials(cassandraUsername, cassandraPassword))
+                    )
+                    .withConnectionPoolMonitor(new CountingConnectionPoolMonitor())
+                    .buildKeyspace(ThriftFamilyFactory.getInstance());
+
+            astyanaxContext.start();
+            keyspace = astyanaxContext.getClient();
+            columnFamily = new ColumnFamily<byte[], byte[]>(
+                    columnFamilyName,// Column Family Name
+                    com.netflix.astyanax.serializers.BytesArraySerializer.get(), // Key Serializer
+                    com.netflix.astyanax.serializers.BytesArraySerializer.get());
+
+            mutratorBatchCreate();
+        }
 
         context.getCounter("Task", "customSetup").increment(1);
     }
 
-//    protected void reduce(Text key, Iterable<MapWritable> values, Context context) throws IOException, InterruptedException {
-//        for(MapWritable value : values) {
-//
-//            byte[] cassandraKey = byteArrayGet(value,"cassandraKey");
-//            System.out.println("cassandraKey: " + cassandraKey.length);
-//
-//            byte[] cassandraColumnName =  byteArrayGet(value,"cassandraColumnName");
-//
-//
-//
-//            long cassandraTimestamp = longGet(value,"cassandraTimestamp");
-//        }
-//    }
-
-    //protected void reduce(Text key, Iterable<MapWritable> values, Context context) throws IOException, InterruptedException {
-    //AVRO
-    //protected void reduce(Text key, Iterable<AvroValue<GenericRecord>> values, Context context) throws IOException, InterruptedException {
     protected void reduce(BytesWritable key, Iterable<BytesWritable> values, Context context) throws IOException, InterruptedException {
         GenericRecord record;
 
         for(BytesWritable value : values) {
+            record = Main.avroDeserializeFromByte(avroSchema,value.getBytes());
 
-            record = Sandbox.deserializeFromByte(avroSchema,value.getBytes());
-            byte[] cassandraKey = ((ByteBuffer)(record.get("cassandraKey"))).array();
+            byte[] cassandraKey = ((ByteBuffer)(record.get("key"))).array();
             byte[] cassandraColumnName = ((ByteBuffer)(record.get("columnName"))).array();
             byte[] cassandraValue = ((ByteBuffer)(record.get("value"))).array();
             long cassandraTimestmap = (long) record.get("timestamp");
-            long ttl = (long) record.get("ttl");
+            int cassandraTtl = (int) record.get("ttl");
+
+            //ASTYANAX
+            {
+                if(cassandraTimestmap > 0)
+                    mutatorBatch.setTimestamp(cassandraTimestmap);
+
+                if(cassandraTtl > 0)
+                    mutatorBatch.withRow(columnFamily, cassandraKey).putColumn(cassandraColumnName, cassandraValue,cassandraTtl);
+                else
+                    mutatorBatch.withRow(columnFamily, cassandraKey).putColumn(cassandraColumnName, cassandraValue);
+
+                context.getCounter("cassandra","addRow").increment(1);
+                recordsInBulk++;
+
+                if(recordsInBulk >= recordsPerBulk) {
+                    executeWrite(context);
+                    mutratorBatchCreate();
+                }
+            }
         }
+    }
+
+    private void executeWrite(org.apache.hadoop.mapreduce.Reducer.Context context)  {
+        mutatorBatch.setTimestamp(3000);
+
+        if(recordsInBulk > 0) {
+            boolean wasSuccess = false;
+            int retryCount = 3;
+
+            while(wasSuccess == false && retryCount >=0) {
+                try {
+                    OperationResult<Void> result = mutatorBatch.execute();
+                    context.getCounter("cassandra","write.Success").increment(1);
+                    mutratorBatchCreate();
+                    wasSuccess = true;
+                } catch (Exception e) {
+                    retryCount--;
+                    context.getCounter("cassandra","write.Fail." + retryCount).increment(1);
+
+                    System.out.println("Cassandra write -> " + e);
+                }
+            }
+
+            if(wasSuccess == false) {
+                context.getCounter("cassandra","write.Fail.Absolute").increment(1);
+            }
+        }
+    }
+
+    private void mutratorBatchCreate()  {
+        mutatorBatch = keyspace.prepareMutationBatch();
+        recordsInBulk = 0;
+    }
+
+    @Override
+    public void cleanup(org.apache.hadoop.mapreduce.Reducer.Context context) {
+        //take care of any left over records
+        executeWrite(context);
+
+        context.getCounter("Task", "cleanup").increment(1);
     }
 
 }

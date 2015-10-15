@@ -2,12 +2,17 @@ package com.kenshoo.bigdata.cassandra_to_hive;
 
 
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.*;
 import org.apache.avro.mapred.AvroValue;
 import org.apache.avro.mapreduce.AvroJob;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.GnuParser;
 import org.apache.commons.cli.Options;
+import org.apache.commons.io.output.ByteArrayOutputStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileSystem;
@@ -28,6 +33,7 @@ import org.apache.hive.hcatalog.data.HCatRecord;
 import org.apache.hive.hcatalog.mapreduce.HCatInputFormat;
 
 
+import java.io.IOException;
 import java.util.Date;
 
 /**
@@ -48,6 +54,18 @@ public class Main extends Configured implements Tool {
     public static final String CONF_RECORD_PER_BULK = "recordsPerBulk";
     public static final String CONF_HIVE_DATABASE = "hiveDatabase";
     public static final String CONF_HIVE_TABLE = "hiveTable";
+
+    public static final String CASSANDRA_RECORD_AVRO_SCHEMA = "{\"namespace\": \"kenshoo.com\",\n" +
+            " \"type\": \"record\",\n" +
+            " \"name\": \"CassandraRecord\",\n" +
+            " \"fields\": [\n" +
+            "     {\"name\": \"key\", \"type\": \"bytes\"},\n" +
+            "     {\"name\": \"columnName\", \"type\": \"bytes\"},\n" +
+            "     {\"name\": \"value\", \"type\": \"bytes\"},\n" +
+            "     {\"name\": \"ttl\", \"type\": \"int\"},\n" +
+            "     {\"name\": \"timestamp\", \"type\": \"long\"}\n" +
+            " ]\n" +
+            "}";
 
     private Configuration conf = null;
     private CommandLine cmd = null;
@@ -146,30 +164,13 @@ public class Main extends Configured implements Tool {
                 SequenceFileOutputFormat.setOutputCompressionType(job, SequenceFile.CompressionType.BLOCK);
                 job.setOutputFormatClass(org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat.class);
             }
-            /*
-            {
-                job.setOutputFormatClass(HCatOutputFormat.class);
-                HCatOutputFormat.setOutput(job, OutputJobInfo.create(dbName, outputTableName,null));
-                HCatSchema s = HCatOutputFormat.getTableSchema(job.getConfiguration());
-                HCatOutputFormat.setSchema(job, s);
-            }
-            */
 
             //Map
             {
-                //job.setMapOutputKeyClass(Text.class);
                 job.setMapOutputKeyClass(BytesWritable.class);
-                //job.setMapOutputValueClass(MapWritable.class);
-                //AVRO
-                //job.setMapOutputValueClass(AvroValue.class);
                 job.setMapOutputValueClass(BytesWritable.class);
                 job.setMapperClass(Map.class);
             }
-
-            //AVRO
-            //Schema avroSchema = new Schema.Parser().parse(Sandbox.cassandraSchema);
-            //AvroJob.setOutputKeySchema(job,avroSchema);
-            //AvroJob.setMapOutputValueSchema(job,avroSchema);
 
 
             //Reduce
@@ -220,5 +221,23 @@ public class Main extends Configured implements Tool {
 
             return true; //value is not a must, validation passed
         }
+    }
+
+    public static byte[] avroSerializeToByte(GenericRecord record) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        BinaryEncoder encoder = EncoderFactory.get().directBinaryEncoder(out, null);
+        DatumWriter<GenericRecord> writer = new GenericDatumWriter<GenericRecord>(record.getSchema());
+
+        writer.write(record, encoder);
+        encoder.flush();
+        out.close();
+        return out.toByteArray();
+    }
+
+    public static GenericRecord avroDeserializeFromByte(Schema schema,byte[] bytes) throws IOException {
+        GenericDatumReader<GenericRecord> reader = new GenericDatumReader<GenericRecord>(schema);
+        Decoder decoder = DecoderFactory.get().binaryDecoder(bytes, null);
+        GenericRecord record = reader.read(null, decoder);
+        return record;
     }
 }

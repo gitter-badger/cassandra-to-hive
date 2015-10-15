@@ -51,17 +51,11 @@ public class Map extends Mapper<WritableComparable, HCatRecord, BytesWritable, B
     private HCatSchema inputSchema = null;
     private DefaultHCatRecord outputRecord;
 
-    private String cassandraAddress,cassandraUsername,cassandraPassword;
-    private String keyspaceName,columnFamilyName;
     private String keyFieldName,columnNameFieldName,valueFieldName;
     private String timestampFieldName,ttlFieldName;
-    private int recordsPerBulk, recordsInBulk = 0;
-    private Keyspace keyspace;
-    private ColumnFamily<byte[], byte[]> columnFamily;
-    MutationBatch mutatorBatch = null;
 
     //AVRO
-    Schema avroSchema = new Schema.Parser().parse(Sandbox.cassandraSchema);
+    Schema avroSchema = new Schema.Parser().parse(Main.CASSANDRA_RECORD_AVRO_SCHEMA);
 
     @Override
     public void setup(Context context)
@@ -70,20 +64,6 @@ public class Map extends Mapper<WritableComparable, HCatRecord, BytesWritable, B
         //Init from configuration
         {
             Configuration conf = context.getConfiguration();
-            cassandraAddress = conf.get("cassandraAddress");
-            System.out.println("cassandraAddress: " + cassandraAddress);
-
-            cassandraUsername = conf.get("cassandraUsername");
-            System.out.println("cassandraUsername: " + cassandraUsername);
-
-            cassandraPassword = conf.get("cassandraPassword");
-            System.out.println("cassandraPassword Length: " + Integer.toString(cassandraPassword.length()));
-
-            keyspaceName = conf.get("keyspaceName");
-            System.out.println("keyspaceName: " + keyspaceName);
-
-            columnFamilyName = conf.get("columnFamilyName");
-            System.out.println("columnFamilyName: " + columnFamilyName);
 
             keyFieldName = conf.get("keyFieldName");
             System.out.println("keyFieldName: " + keyFieldName);
@@ -99,42 +79,11 @@ public class Map extends Mapper<WritableComparable, HCatRecord, BytesWritable, B
 
             ttlFieldName = conf.get("ttlFieldName");
             System.out.println("ttlFieldName: " + ttlFieldName);
-
-            recordsPerBulk = conf.getInt("recordsPerBulk",100);
-            System.out.println("recordsPerBulk: " + Integer.toString(recordsPerBulk));
         }
 
         //Schema Init
         {
             inputSchema = HCatBaseInputFormat.getTableSchema(context.getConfiguration());
-            //outputSchema = HCatBaseOutputFormat.getTableSchema(context.getConfiguration());
-        }
-
-        //Astyanax Init
-        {
-            AstyanaxContext<Keyspace> astyanaxContext = new AstyanaxContext.Builder()
-                    .forCluster(keyspaceName)
-                    .forKeyspace(keyspaceName)
-                    .withAstyanaxConfiguration(new AstyanaxConfigurationImpl()
-                                    .setDiscoveryType(NodeDiscoveryType.RING_DESCRIBE)
-                    )
-                    .withConnectionPoolConfiguration(new ConnectionPoolConfigurationImpl("MyConnectionPool")
-                                    .setPort(9160)
-                                    .setMaxConnsPerHost(1)
-                                    .setSeeds(cassandraAddress)
-                                    .setAuthenticationCredentials(new SimpleAuthenticationCredentials(cassandraUsername, cassandraPassword))
-                    )
-                    .withConnectionPoolMonitor(new CountingConnectionPoolMonitor())
-                    .buildKeyspace(ThriftFamilyFactory.getInstance());
-
-            astyanaxContext.start();
-            keyspace = astyanaxContext.getClient();
-            columnFamily = new ColumnFamily<byte[], byte[]>(
-                            columnFamilyName,// Column Family Name
-                            com.netflix.astyanax.serializers.BytesArraySerializer.get(), // Key Serializer
-                            com.netflix.astyanax.serializers.BytesArraySerializer.get());
-
-            mutratorBatchCreate();
         }
 
         context.getCounter("Task", "setup").increment(1);
@@ -142,8 +91,6 @@ public class Map extends Mapper<WritableComparable, HCatRecord, BytesWritable, B
 
     @Override
     public void map(WritableComparable key, HCatRecord value,
-                    //org.apache.hadoop.mapreduce.Mapper<WritableComparable, HCatRecord, Text, MapWritable>.Context context)
-                    //org.apache.hadoop.mapreduce.Mapper<WritableComparable, HCatRecord, Text, AvroValue<GenericRecord>>.Context context)
                     org.apache.hadoop.mapreduce.Mapper<WritableComparable, HCatRecord, BytesWritable, BytesWritable>.Context context)
             throws java.io.IOException, InterruptedException {
 
@@ -153,7 +100,7 @@ public class Map extends Mapper<WritableComparable, HCatRecord, BytesWritable, B
         byte[] cassandraColumnName = value.getByteArray(columnNameFieldName,inputSchema);
         byte[] cassandraValue = value.getByteArray(valueFieldName,inputSchema);
         long cassandraTimestmap = 0;
-        int cassandraTtl = 7200;
+        int cassandraTtl = 0;
 
         //timestamp & ttl are optional
         if(timestampFieldName != null && timestampFieldName.isEmpty() == false) {
@@ -170,70 +117,10 @@ public class Map extends Mapper<WritableComparable, HCatRecord, BytesWritable, B
         cassandraRecord.put("value",ByteBuffer.wrap(cassandraValue));
         cassandraRecord.put("ttl",cassandraTtl);
         cassandraRecord.put("timestamp", cassandraTimestmap);
-        context.write(new BytesWritable(cassandraKey),new BytesWritable(Sandbox.serializeToByte(cassandraRecord)));
-
-//        //ASTYANAX
-//        {
-//            if(cassandraTimestmap > 0)
-//                mutatorBatch.setTimestamp(cassandraTimestmap);
-//
-//            if(cassandraTtl > 0)
-//                mutatorBatch.withRow(columnFamily, cassandraKey).putColumn(cassandraColumnName, cassandraValue,cassandraTtl);
-//            else
-//                mutatorBatch.withRow(columnFamily, cassandraKey).putColumn(cassandraColumnName, cassandraValue);
-//
-//            //if(cassandraTimestmap > 0)
-//            //    column.setTimestamp(cassandraTimestmap);
-//            //column.setTimestamp(5000);
-//
-//            context.getCounter("cassandra","addRow").increment(1);
-//            recordsInBulk++;
-//
-//            if(recordsInBulk >= recordsPerBulk) {
-//                executeWrite(context);
-//                mutratorBatchCreate();
-//            }
-//        }
+        context.write(new BytesWritable(cassandraKey),new BytesWritable(Main.avroSerializeToByte(cassandraRecord)));
 
     }
 
-    @Override
-    public void cleanup(org.apache.hadoop.mapreduce.Mapper.Context context) {
-        //take care of any left over records
-        executeWrite(context);
-
-        context.getCounter("Task", "cleanup").increment(1);
-    }
-
-    private void executeWrite(org.apache.hadoop.mapreduce.Mapper.Context context)  {
-        mutatorBatch.setTimestamp(3000);
-
-        if(recordsInBulk > 0) {
-            boolean wasSuccess = false;
-            int retryCount = 3;
-            while(wasSuccess == false && retryCount >=0) {
-                try {
-                    OperationResult<Void> result = mutatorBatch.execute();
-                    context.getCounter("cassandra","write.Success").increment(1);
-                    mutratorBatchCreate();
-                    wasSuccess = true;
-                } catch (Exception e) {
-                    retryCount--;
-                    context.getCounter("cassandra","write.Fail." + retryCount).increment(1);
-
-                    System.out.println("Cassandra write -> " + e);
-                }
-            }
-
-            if(wasSuccess == false) {
-                context.getCounter("cassandra","write.Fail.Absolute").increment(1);
-            }
-        }
-    }
 
 
-    private void mutratorBatchCreate()  {
-        mutatorBatch = keyspace.prepareMutationBatch();
-        recordsInBulk = 0;
-    }
 }

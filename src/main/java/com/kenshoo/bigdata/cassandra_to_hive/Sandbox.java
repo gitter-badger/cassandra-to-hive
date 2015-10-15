@@ -33,17 +33,7 @@ import java.nio.ByteBuffer;
  * Created by noamh on 19/07/15.
  */
 public class Sandbox {
-    public static String cassandraSchema = "{\"namespace\": \"kenshoo.com\",\n" +
-            " \"type\": \"record\",\n" +
-            " \"name\": \"CassandraRecord\",\n" +
-            " \"fields\": [\n" +
-            "     {\"name\": \"key\", \"type\": \"bytes\"},\n" +
-            "     {\"name\": \"columnName\", \"type\": \"bytes\"},\n" +
-            "     {\"name\": \"value\", \"type\": \"bytes\"},\n" +
-            "     {\"name\": \"ttl\", \"type\": \"long\"},\n" +
-            "     {\"name\": \"timestamp\", \"type\": \"long\"}\n" +
-            " ]\n" +
-            "}";
+
 
     public static void main(String[] args) throws IOException {
         /*
@@ -67,7 +57,7 @@ public class Sandbox {
 
 
 
-        Schema schema = new Schema.Parser().parse(cassandraSchema);
+        Schema schema = new Schema.Parser().parse(Main.CASSANDRA_RECORD_AVRO_SCHEMA);
         GenericRecord cassandraRecord = new GenericData.Record(schema);
         byte[] array = new byte[] {1,1,2,3,4};
         cassandraRecord.put("cassandraKey",ByteBuffer.wrap(array));
@@ -75,9 +65,9 @@ public class Sandbox {
 
 
 
-        byte[] bytes = serializeToByte(cassandraRecord);
+        byte[] bytes = Main.avroSerializeToByte(cassandraRecord);
 
-        cassandraRecord = deserializeFromByte(schema,bytes);
+        cassandraRecord = Main.avroDeserializeFromByte(schema,bytes);
 
         System.out.println(cassandraRecord.get("timestamp"));
         System.out.println(((ByteBuffer) cassandraRecord.get("cassandraKey")).array().length);
@@ -139,21 +129,4 @@ public class Sandbox {
         */
     }
 
-    public static byte[] serializeToByte(GenericRecord record) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        BinaryEncoder encoder = EncoderFactory.get().directBinaryEncoder(out, null);
-        DatumWriter<GenericRecord> writer = new GenericDatumWriter<GenericRecord>(record.getSchema());
-
-        writer.write(record, encoder);
-        encoder.flush();
-        out.close();
-        return out.toByteArray();
-    }
-
-    public static GenericRecord deserializeFromByte(Schema schema,byte[] bytes) throws IOException {
-        GenericDatumReader<GenericRecord> reader = new GenericDatumReader<GenericRecord>(schema);
-        Decoder decoder = DecoderFactory.get().binaryDecoder(bytes, null);
-        GenericRecord record = reader.read(null, decoder);
-        return record;
-    }
 }
