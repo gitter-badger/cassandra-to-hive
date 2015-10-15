@@ -3,6 +3,7 @@ package com.kenshoo.bigdata.cassandra_to_hive;
 
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.*;
 
 import com.netflix.astyanax.AstyanaxContext;
@@ -18,8 +19,14 @@ import com.netflix.astyanax.impl.AstyanaxConfigurationImpl;
 import com.netflix.astyanax.model.ColumnFamily;
 import com.netflix.astyanax.serializers.StringSerializer;
 import com.netflix.astyanax.thrift.ThriftFamilyFactory;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.mapred.AvroValue;
+import org.apache.cassandra.utils.Hex;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.conf.*;
+import org.apache.hadoop.hive.ql.io.parquet.writable.BinaryWritable;
 import org.apache.hadoop.io.*;
 import org.apache.hadoop.io.file.tfile.ByteArray;
 import org.apache.hadoop.mapreduce.*;
@@ -36,9 +43,10 @@ import org.json.JSONObject;
 /**
  * Created by noamh on 21/07/15.
  */
-public class Map extends Mapper<WritableComparable, HCatRecord, Text, DefaultHCatRecord>{
-
-
+//public class Map extends Mapper<WritableComparable, HCatRecord, Text, MapWritable>{
+//AVRO
+//public class Map extends Mapper<WritableComparable, HCatRecord, Text, AvroValue<GenericRecord>> {
+public class Map extends Mapper<WritableComparable, HCatRecord, BytesWritable, BytesWritable> {
     //private HCatSchema inputSchema = null,outputSchema = null;
     private HCatSchema inputSchema = null;
     private DefaultHCatRecord outputRecord;
@@ -51,6 +59,9 @@ public class Map extends Mapper<WritableComparable, HCatRecord, Text, DefaultHCa
     private Keyspace keyspace;
     private ColumnFamily<byte[], byte[]> columnFamily;
     MutationBatch mutatorBatch = null;
+
+    //AVRO
+    Schema avroSchema = new Schema.Parser().parse(Sandbox.cassandraSchema);
 
     @Override
     public void setup(Context context)
@@ -131,8 +142,10 @@ public class Map extends Mapper<WritableComparable, HCatRecord, Text, DefaultHCa
 
     @Override
     public void map(WritableComparable key, HCatRecord value,
-                    org.apache.hadoop.mapreduce.Mapper<WritableComparable, HCatRecord, Text, DefaultHCatRecord>.Context context)
-            throws java.io.IOException {
+                    //org.apache.hadoop.mapreduce.Mapper<WritableComparable, HCatRecord, Text, MapWritable>.Context context)
+                    //org.apache.hadoop.mapreduce.Mapper<WritableComparable, HCatRecord, Text, AvroValue<GenericRecord>>.Context context)
+                    org.apache.hadoop.mapreduce.Mapper<WritableComparable, HCatRecord, BytesWritable, BytesWritable>.Context context)
+            throws java.io.IOException, InterruptedException {
 
         context.getCounter("Map.Custom","GotRecord").increment(1);
 
@@ -150,28 +163,38 @@ public class Map extends Mapper<WritableComparable, HCatRecord, Text, DefaultHCa
             cassandraTtl = value.getInteger(ttlFieldName,inputSchema);
         }
 
-        //ASTYANAX
-        {
-            if(cassandraTimestmap > 0)
-                mutatorBatch.setTimestamp(cassandraTimestmap);
+        //AVRO
+        GenericRecord cassandraRecord = new GenericData.Record(avroSchema);
+        cassandraRecord.put("key", ByteBuffer.wrap(cassandraKey));
+        cassandraRecord.put("columnName",ByteBuffer.wrap(cassandraColumnName));
+        cassandraRecord.put("value",ByteBuffer.wrap(cassandraValue));
+        cassandraRecord.put("ttl",cassandraTtl);
+        cassandraRecord.put("timestamp", cassandraTimestmap);
+        context.write(new BytesWritable(cassandraKey),new BytesWritable(Sandbox.serializeToByte(cassandraRecord)));
 
-            if(cassandraTtl > 0)
-                mutatorBatch.withRow(columnFamily, cassandraKey).putColumn(cassandraColumnName, cassandraValue,cassandraTtl);
-            else
-                mutatorBatch.withRow(columnFamily, cassandraKey).putColumn(cassandraColumnName, cassandraValue);
+//        //ASTYANAX
+//        {
+//            if(cassandraTimestmap > 0)
+//                mutatorBatch.setTimestamp(cassandraTimestmap);
+//
+//            if(cassandraTtl > 0)
+//                mutatorBatch.withRow(columnFamily, cassandraKey).putColumn(cassandraColumnName, cassandraValue,cassandraTtl);
+//            else
+//                mutatorBatch.withRow(columnFamily, cassandraKey).putColumn(cassandraColumnName, cassandraValue);
+//
+//            //if(cassandraTimestmap > 0)
+//            //    column.setTimestamp(cassandraTimestmap);
+//            //column.setTimestamp(5000);
+//
+//            context.getCounter("cassandra","addRow").increment(1);
+//            recordsInBulk++;
+//
+//            if(recordsInBulk >= recordsPerBulk) {
+//                executeWrite(context);
+//                mutratorBatchCreate();
+//            }
+//        }
 
-            //if(cassandraTimestmap > 0)
-            //    column.setTimestamp(cassandraTimestmap);
-            //column.setTimestamp(5000);
-
-            context.getCounter("cassandra","addRow").increment(1);
-            recordsInBulk++;
-
-            if(recordsInBulk >= recordsPerBulk) {
-                executeWrite(context);
-                mutratorBatchCreate();
-            }
-        }
     }
 
     @Override
@@ -207,6 +230,8 @@ public class Map extends Mapper<WritableComparable, HCatRecord, Text, DefaultHCa
             }
         }
     }
+
+
     private void mutratorBatchCreate()  {
         mutatorBatch = keyspace.prepareMutationBatch();
         recordsInBulk = 0;

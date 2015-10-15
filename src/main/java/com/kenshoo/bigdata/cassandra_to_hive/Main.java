@@ -1,6 +1,9 @@
 package com.kenshoo.bigdata.cassandra_to_hive;
 
 
+import org.apache.avro.Schema;
+import org.apache.avro.mapred.AvroValue;
+import org.apache.avro.mapreduce.AvroJob;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.GnuParser;
@@ -9,6 +12,8 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.BytesWritable;
+import org.apache.hadoop.io.MapWritable;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.compress.GzipCodec;
@@ -49,14 +54,12 @@ public class Main extends Configured implements Tool {
 
 
     public static void main(String[] args) throws Exception {
-        System.out.println("Version: 0.1 -> Main");
-
         int exitCode = ToolRunner.run(new Main(), args);
         System.exit(exitCode);
     }
 
     public int run(String[] args) throws Exception {
-        System.out.println("Version: 0.2");
+        System.out.println("Version: 0.3");
         String dbName = "", inputTableName = "";
         FileSystem fs;
         Job job = null;
@@ -154,20 +157,28 @@ public class Main extends Configured implements Tool {
 
             //Map
             {
-                job.setMapOutputKeyClass(Text.class);
-                job.setMapOutputValueClass(DefaultHCatRecord.class);
+                //job.setMapOutputKeyClass(Text.class);
+                job.setMapOutputKeyClass(BytesWritable.class);
+                //job.setMapOutputValueClass(MapWritable.class);
+                //AVRO
+                //job.setMapOutputValueClass(AvroValue.class);
+                job.setMapOutputValueClass(BytesWritable.class);
                 job.setMapperClass(Map.class);
             }
+
+            //AVRO
+            //Schema avroSchema = new Schema.Parser().parse(Sandbox.cassandraSchema);
+            //AvroJob.setOutputKeySchema(job,avroSchema);
+            //AvroJob.setMapOutputValueSchema(job,avroSchema);
+
 
             //Reduce
             {
                 job.setOutputKeyClass(Text.class);
-                job.setOutputValueClass(HCatRecord.class);
+                job.setOutputValueClass(Text.class);
+                job.setReducerClass(Reduce.class);
                 job.setNumReduceTasks(15);
             }
-
-
-
 
             return (job.waitForCompletion(true) ? 0 : 1);
         } else {

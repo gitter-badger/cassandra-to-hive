@@ -25,7 +25,8 @@ JETTISON = 'org.codehaus.jettison:jettison:1.2'
 JETTY = 'org.mortbay.jetty:jetty:6.1.26'
 SNAPPY = 'org.xerial.snappy:snappy-java:1.0.5'
 GUAVA = 'com.google.guava:guava:14.0.1'
-AVRO = 'org.apache.avro:avro:1.7.5'
+AVRO = 'org.apache.avro:avro:1.7.7'
+AVRO_VELOCITY = 'org.apache.velocity:velocity:1.7'
 ZOOKEEPER = 'org.apache.zookeeper:zookeeper:3.4.6'
 JAVAX = 'javax.servlet:servlet-api:2.5'
 NETTY_IO = 'io.netty:netty:3.7.0.Final'
@@ -55,6 +56,12 @@ allprojects {
 
 
     dependencies {
+
+        compile 'org.apache.avro:avro:1.7.7'
+
+        compile 'org.apache.avro:avro-mapred:1.7.7'
+
+
         compile 'org.apache.hive.hcatalog:hive-hcatalog-core:0.13.1', {
             ext {
                 fatJarExclude = true
@@ -117,7 +124,7 @@ configurations.all {
         failOnVersionConflict()
         force  SLF_API,SLF_LOG4J, JACKSON_CORE, COMMOMS_CODE, COMMONS_LOGGIMS, COMMONS_HTTPCLIENT, JACKSON_MAPPER, COMMONS_LANG, LOGS, JETTISON, JETTY, SNAPPY,
                 GUAVA, COMMON_CLI, AVRO, ZOOKEEPER, JAVAX, HTTP_COMPONENT_CLIENT, NETTY_IO, JACKSON_JAXRS, JACKSON_XC, LIB_THRIFT, HTTP_COMPONENT_CORE, ANTLR,
-                COMMONS_COLLECTIONS, JLINE
+                COMMONS_COLLECTIONS, JLINE, AVRO_VELOCITY
     }
 }
 

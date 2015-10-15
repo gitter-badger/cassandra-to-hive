@@ -7,14 +7,81 @@ import com.datastax.driver.core.querybuilder.Using;
 import com.datastax.driver.core.schemabuilder.UDTType;
 */
 
-import javax.management.Query;
-import java.util.UUID;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.DatumWriter;
+import org.apache.avro.io.DecoderFactory;
+import org.apache.avro.io.Decoder;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.mapred.AvroValue;
+import org.apache.avro.specific.SpecificDatumReader;
+import org.apache.avro.specific.SpecificDatumWriter;
+import org.apache.commons.io.output.ByteArrayOutputStream;
+import org.apache.hadoop.hive.ql.exec.ByteWritable;
+import org.apache.hadoop.io.BytesWritable;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.MapWritable;
+import org.apache.hadoop.io.Text;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 
 /**
  * Created by noamh on 19/07/15.
  */
 public class Sandbox {
-    public static void main(String[] args) {
+    public static String cassandraSchema = "{\"namespace\": \"kenshoo.com\",\n" +
+            " \"type\": \"record\",\n" +
+            " \"name\": \"CassandraRecord\",\n" +
+            " \"fields\": [\n" +
+            "     {\"name\": \"key\", \"type\": \"bytes\"},\n" +
+            "     {\"name\": \"columnName\", \"type\": \"bytes\"},\n" +
+            "     {\"name\": \"value\", \"type\": \"bytes\"},\n" +
+            "     {\"name\": \"ttl\", \"type\": \"long\"},\n" +
+            "     {\"name\": \"timestamp\", \"type\": \"long\"}\n" +
+            " ]\n" +
+            "}";
+
+    public static void main(String[] args) throws IOException {
+        /*
+        MapWritable mapWritable = new MapWritable();
+
+        mapWritable.put(new Text("test"), new LongWritable(5));
+
+        LongWritable value =  (LongWritable) mapWritable.get(new Text("test"));
+
+        System.out.println(value.toString());
+
+
+        byte[] myArray = new byte[] {1,2,3,4};
+        BytesWritable bytesWritable = new BytesWritable(myArray);
+        mapWritable.put(new Text("test2"),bytesWritable);
+
+        myArray = ((BytesWritable) mapWritable.get(new Text("test2"))).getBytes();
+
+        System.out.println(myArray.length);
+        */
+
+
+
+        Schema schema = new Schema.Parser().parse(cassandraSchema);
+        GenericRecord cassandraRecord = new GenericData.Record(schema);
+        byte[] array = new byte[] {1,1,2,3,4};
+        cassandraRecord.put("cassandraKey",ByteBuffer.wrap(array));
+        cassandraRecord.put("timestamp",1234l);
+
+
+
+        byte[] bytes = serializeToByte(cassandraRecord);
+
+        cassandraRecord = deserializeFromByte(schema,bytes);
+
+        System.out.println(cassandraRecord.get("timestamp"));
+        System.out.println(((ByteBuffer) cassandraRecord.get("cassandraKey")).array().length);
+
         /*
         String keyspace = "dejavu";
         String columnFamily = "events";
@@ -70,5 +137,23 @@ public class Sandbox {
 
         //session.closeAsync();
         */
+    }
+
+    public static byte[] serializeToByte(GenericRecord record) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        BinaryEncoder encoder = EncoderFactory.get().directBinaryEncoder(out, null);
+        DatumWriter<GenericRecord> writer = new GenericDatumWriter<GenericRecord>(record.getSchema());
+
+        writer.write(record, encoder);
+        encoder.flush();
+        out.close();
+        return out.toByteArray();
+    }
+
+    public static GenericRecord deserializeFromByte(Schema schema,byte[] bytes) throws IOException {
+        GenericDatumReader<GenericRecord> reader = new GenericDatumReader<GenericRecord>(schema);
+        Decoder decoder = DecoderFactory.get().binaryDecoder(bytes, null);
+        GenericRecord record = reader.read(null, decoder);
+        return record;
     }
 }
