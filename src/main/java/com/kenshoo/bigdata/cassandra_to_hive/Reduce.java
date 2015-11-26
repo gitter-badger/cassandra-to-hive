@@ -31,9 +31,6 @@ import java.util.UUID;
 /**
  * Created by noamh on 30/08/15.
  */
-//public class Reduce extends Reducer<Text,MapWritable,Text,Text> {
-//AVRO
-//public class Reduce extends Reducer<Text,AvroValue<GenericRecord>,Text,Text> {
 public class Reduce extends Reducer<BytesWritable,BytesWritable,Text,Text> {
 
     private String keyspaceName,columnFamilyName;
@@ -46,6 +43,7 @@ public class Reduce extends Reducer<BytesWritable,BytesWritable,Text,Text> {
 
     public void setup(Context context)
             throws java.io.IOException, InterruptedException {
+
         //Init from configuration
         {
             Configuration conf = context.getConfiguration();
@@ -132,12 +130,13 @@ public class Reduce extends Reducer<BytesWritable,BytesWritable,Text,Text> {
         }
     }
 
-    private void executeWrite(org.apache.hadoop.mapreduce.Reducer.Context context)  {
+    private void executeWrite(org.apache.hadoop.mapreduce.Reducer.Context context) throws IOException {
         mutatorBatch.setTimestamp(3000);
 
         if(recordsInBulk > 0) {
             boolean wasSuccess = false;
             int retryCount = 3;
+            String lastErrorMessage = "";
 
             while(wasSuccess == false && retryCount >=0) {
                 try {
@@ -147,7 +146,9 @@ public class Reduce extends Reducer<BytesWritable,BytesWritable,Text,Text> {
                     wasSuccess = true;
                 } catch (Exception e) {
                     retryCount--;
+                    System.out.println("ERROR -> mutator.Batch.execute() -> " + e.getMessage());
                     context.getCounter("cassandra","write.Fail." + retryCount).increment(1);
+                    lastErrorMessage = e.getMessage();
 
                     System.out.println("Cassandra write -> " + e);
                 }
@@ -155,6 +156,7 @@ public class Reduce extends Reducer<BytesWritable,BytesWritable,Text,Text> {
 
             if(wasSuccess == false) {
                 context.getCounter("cassandra","write.Fail.Absolute").increment(1);
+                throw new IOException("Failed writing to Cassandra -> " + lastErrorMessage);
             }
         }
     }
@@ -165,7 +167,7 @@ public class Reduce extends Reducer<BytesWritable,BytesWritable,Text,Text> {
     }
 
     @Override
-    public void cleanup(org.apache.hadoop.mapreduce.Reducer.Context context) {
+    public void cleanup(org.apache.hadoop.mapreduce.Reducer.Context context) throws IOException {
         //take care of any left over records
         executeWrite(context);
 

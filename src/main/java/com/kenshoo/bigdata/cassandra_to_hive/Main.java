@@ -77,7 +77,7 @@ public class Main extends Configured implements Tool {
     }
 
     public int run(String[] args) throws Exception {
-        System.out.println("Version: 0.3");
+        System.out.println("Version: 0.1.2");
         String dbName = "", inputTableName = "";
         FileSystem fs;
         Job job = null;
@@ -178,7 +178,7 @@ public class Main extends Configured implements Tool {
                 job.setOutputKeyClass(Text.class);
                 job.setOutputValueClass(Text.class);
                 job.setReducerClass(Reduce.class);
-                job.setNumReduceTasks(15);
+                job.setNumReduceTasks(20);
             }
 
             return (job.waitForCompletion(true) ? 0 : 1);

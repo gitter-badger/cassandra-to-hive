@@ -16,4 +16,4 @@ export HADOOP_CLASSPATH=$HCATJAR:$HCATPIGJAR:$HIVE_HOME/lib/hive-exec-$HIVE_VERS
 LIBJARS=`echo $HADOOP_CLASSPATH | sed -e 's/:/,/g'`
 export LIBJARS=$HIVE_HOME/lib/antlr-runtime-3.4.jar,$LIBJARS
 
-hadoop jar build/libs/cassandra-to-hive-0.1.0.jar com.kenshoo.bigdata.cassandra_to_hive.Main -files $HCATJAR -libjars $LIBJARS $@
+hadoop jar build/libs/cassandra-to-hive-0.1.2.jar com.kenshoo.bigdata.cassandra_to_hive.Main -files $HCATJAR -libjars $LIBJARS $@

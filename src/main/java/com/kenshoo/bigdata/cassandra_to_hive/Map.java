@@ -26,7 +26,7 @@ import org.apache.avro.mapred.AvroValue;
 import org.apache.cassandra.utils.Hex;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.conf.*;
-import org.apache.hadoop.hive.ql.io.parquet.writable.BinaryWritable;
+//import org.apache.hadoop.hive.ql.io.parquet.writable.BinaryWritable;
 import org.apache.hadoop.io.*;
 import org.apache.hadoop.io.file.tfile.ByteArray;
 import org.apache.hadoop.mapreduce.*;
