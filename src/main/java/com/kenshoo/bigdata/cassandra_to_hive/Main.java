@@ -157,7 +157,7 @@ public class Main extends Configured implements Tool {
             //Output
             {
                 //Generate some temp directory
-                Path outputPath = new Path("/tmp/dejavu_" + dbName + "_" + inputTableName + "/" + (new Date()).getTime());
+                Path outputPath = new Path("/tmp/dejavu_" + dbName + "_" + inputTableName + "_" + (new Date()).getTime());
                 FileOutputFormat.setOutputPath(job, outputPath);
                 FileOutputFormat.setCompressOutput(job,true);
                 FileOutputFormat.setOutputCompressorClass(job,GzipCodec.class);

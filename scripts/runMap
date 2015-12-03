@@ -23,4 +23,4 @@ LIBJARS=`echo $HADOOP_CLASSPATH | sed -e 's/:/,/g'`
 export LIBJARS=$HIVE_HOME/lib/antlr-runtime-3.4.jar,$LIBJARS
 
 
-hadoop jar cassandra-to-hive-0.1.4.jar com.kenshoo.bigdata.cassandra_to_hive.Main -files $HCATJAR -libjars $LIBJARS $HIVE_DB $HIVE_TABLE_INPUT $HIVE_TABLE_OUTPUT
+hadoop jar cassandra-to-hive-0.1.5.jar com.kenshoo.bigdata.cassandra_to_hive.Main -files $HCATJAR -libjars $LIBJARS $HIVE_DB $HIVE_TABLE_INPUT $HIVE_TABLE_OUTPUT
